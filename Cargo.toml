@@ -1,0 +1,7 @@
+[package]
+name = "condo-rust"
+version = "0.1.0"
+authors = ["Roma Sokolov <sokolov.r.v@gmail.com>"]
+
+[dependencies]
+hyper = "0.6.14"
