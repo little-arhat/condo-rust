@@ -1,4 +1,5 @@
 #![feature(collections)]
+#![feature(convert)]
 extern crate collections;
 
 extern crate hyper;
@@ -6,6 +7,7 @@ extern crate hyper;
 // traits
 use std::io::{Read,Write};
 use std::clone::Clone;
+use std::fmt::Display;
 use std::string::ToString;
 
 // libs
@@ -23,42 +25,87 @@ macro_rules! ignore{
 }
 
 
-struct Consul {
-    client: hyper::Client,
-    endpoint: Url
-}
-
-
-
-fn url_parse(raw_uri: &str) -> Url {
-    if raw_uri.starts_with("http://") || raw_uri.starts_with("https://") {
-        Url::parse(raw_uri)
-    } else {
-        Url::parse(&("http://".to_string() + raw_uri))
-    }.unwrap()
-}
-
-fn url_append_paths<E:ToString, I:Iterator<Item=E>>(url: &Url, paths: I) -> Url
-{
-    let mut new_url = url.clone();
-    // Protect from "borrow of `new_url` occurs here"
-    {
-        // we will unwrap, because we want to use this for http urls only
-        let mut path_components = new_url.path_mut().unwrap();
-        // Empty path encoded as [""]
-        if path_components.len() == 1 && &path_components[0] == "" {
-            ignore!(path_components.pop());
+trait HumanURI:hyper::client::IntoUrl + Sized + Display {
+    fn parse(&str) -> Self;
+    // TODO: https://github.com/rust-lang/rfcs/pull/1305
+    fn path_components(&self) -> Vec<&str>;
+    fn with_path_components<E, I>(&self, I) -> Self
+        where I: Iterator<Item=E>,
+              E: ToString;
+    // fn with_query<(&self, )
+    // defaults
+    fn full_path(&self) -> String {
+        let p = self.path_components().join("/");
+        if p.starts_with("/") {
+            p
+        } else {
+            format!("/{}", p)
         }
-        path_components.extend(paths.map(|s| s.to_string()));
     }
-    new_url
+
+    fn add_path_components<E, I>(&self, pc: I) -> Self
+        where I: Iterator<Item=E>,
+              E: ToString
+    {
+        // XXX: horrible! find a way to do this better!
+        // XXX: problems: can't .to_string().as_str() due to lifetimes
+        let pcs = pc.map(|s| s.to_string()).collect::<Vec<_>>();
+        let mut tmp = self.path_components();
+        tmp.extend(pcs.iter().map(|s| s.as_str()));
+        self.with_path_components(tmp.iter())
+    }
+
+    fn add_path(&self, path: &str) -> Self {
+        self.add_path_components(path.trim_left_matches('/').split("/"))
+    }
+
+    fn with_path(&self, path: &str) -> Self {
+        self.with_path_components(path.trim_left_matches('/').split("/"))
+    }
 }
 
-impl Consul {
+impl HumanURI for Url {
+    fn parse(raw_uri: &str) -> Self {
+        if raw_uri.starts_with("http://") || raw_uri.starts_with("https://") {
+            Url::parse(raw_uri)
+        } else {
+            Url::parse(&format!("http://{}", raw_uri))
+        }.unwrap()
+    }
+
+    fn path_components(&self) -> Vec<&str> {
+        self.path().unwrap().iter()
+            .filter(|s| !s.is_empty())
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+    }
+
+    /// Returns new uri, by appending path components
+    fn with_path_components<E, I>(&self, paths: I) -> Self
+        where I: Iterator<Item=E>,
+              E: ToString
+    {
+        let mut new_url = self.clone();
+        // Protect from "borrow of `new_url` occurs here"
+        {
+            // we will unwrap, because we want to use this for http urls only
+            let mut path_components = new_url.path_mut().unwrap();
+            path_components.clear();
+            path_components.extend(paths.map(|s| s.to_string()));
+        }
+        new_url
+    }
+}
+
+struct Consul<T:HumanURI+hyper::client::IntoUrl> {
+    client: hyper::Client,
+    endpoint: T
+}
+
+impl <T:HumanURI+hyper::client::IntoUrl> Consul<T> {
     #[inline]
-    pub fn new(raw_uri: &str) -> Consul {
-        let endpoint = url_parse(raw_uri);
-        let endpoint = url_append_paths(&endpoint, ["trulalala"].iter());
+    pub fn new(raw_uri: &str) -> Consul<T> {
+        let endpoint = HumanURI::parse(raw_uri);
         Consul{
             client: hyper::Client::new(),
             endpoint: endpoint
@@ -75,8 +122,9 @@ impl Consul {
         } else {
             "".to_string()
         };
-        let url = format!("{}/v1/kv/{}{}", self.endpoint, key, query);
-        self.client.get(&url)
+        let url = self.endpoint.with_path("/v1/kv").add_path(key);
+        println!("Get {}...", url);
+        self.client.get(url)
             .header(header::Connection::close())
             .send()
     }
@@ -119,7 +167,7 @@ fn main() {
     }
     let ref key = args[1];
     println!("Will watch for {} key...", key);
-    let consul = Consul::new(&env_var_or_exit("CONSUL_AGENT"));
+    let consul:Consul<Url> = Consul::new(&env_var_or_exit("CONSUL_AGENT"));
     consul.ping();
     loop {
         match consul.get_key(key, 1) {
