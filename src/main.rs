@@ -24,7 +24,6 @@ macro_rules! ignore{
     }
 }
 
-
 trait HumanURI:hyper::client::IntoUrl + Sized + Display {
     fn parse(&str) -> Self;
     // TODO: https://github.com/rust-lang/rfcs/pull/1305
@@ -97,12 +96,12 @@ impl HumanURI for Url {
     }
 }
 
-struct Consul<T:HumanURI+hyper::client::IntoUrl> {
+struct Consul<T:HumanURI> {
     client: hyper::Client,
     endpoint: T
 }
 
-impl <T:HumanURI+hyper::client::IntoUrl> Consul<T> {
+impl <T:HumanURI> Consul<T> {
     #[inline]
     pub fn new(raw_uri: &str) -> Consul<T> {
         let endpoint = HumanURI::parse(raw_uri);
