@@ -27,7 +27,8 @@ impl Consul {
         println!("Will use consul on {}...", self.endpoint);
     }
 
-    pub fn get_key(&self, key: &str, index: i32) -> hyper::Result<Response> {
+    pub fn get_key(&self, key: &str, index: i32) -> hyper::Result<Response>
+    {
         let url = self.endpoint
             .with_path("/v1/kv")
             .add_path(key)

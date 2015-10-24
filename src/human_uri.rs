@@ -1,5 +1,3 @@
-
-extern crate collections;
 // ext
 extern crate hyper;
 extern crate url;
