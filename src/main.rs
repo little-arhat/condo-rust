@@ -49,75 +49,89 @@ impl HumanURI {
         Self::wrap(url)
     }
 
-    fn path_components(&self) -> Vec<&str> {
-        self.url.path().unwrap().iter()
-            .filter(|s| !s.is_empty())
-            .map(|s| s.as_str())
-            .collect::<Vec<_>>()
-    }
+    // fn path_components(&self) -> Vec<&str> {
+    //     self.url.path().unwrap().iter()
+    //         .filter(|s| !s.is_empty())
+    //         .map(|s| s.as_str())
+    //         .collect::<Vec<_>>()
+    // }
 
-    fn with_query_params<K, V, I>(&self, params: I) -> Self
-        where I: Iterator,
-              I::Item: Borrow<(K, V)>,
-              K: ToString,
-              V: ToString
+    fn with_query_params<'a, K, V, I>(&self, params: I) -> Self
+        where I: Iterator<Item=&'a (K, V)>,
+              K: 'a + AsRef<str>,
+              V: 'a + ToString
     {
         let mut new_url = self.url.clone();
+        // Save params to Vec, to keep created Strings for V there
         let sparams = params.map(|pair| {
-            let (ref k, ref v) = *pair.borrow();
-            (k.to_string(), v.to_string())
+            let ref k = pair.0;
+            let ref v = pair.1;
+            (k, v.to_string())
         }).collect::<Vec<_>>();
+        // Pass references to passed K and created String for V to
+        // setter
         new_url.set_query_from_pairs(sparams.iter()
                                             .map(|&(ref k, ref v)|
-                                                 (k.as_str(), v.as_str())));
+                                                 (k.as_ref(), v.as_str())));
         Self::wrap(new_url)
     }
 
-    fn add_query_params<K, V, I>(&self, params: I) -> Self
-        where I: Iterator,
-              I::Item: Borrow<(K, V)>,
-              K: ToString,
-              V: ToString
+    fn add_query_params<'a, K, V, I>(&self, params: I) -> Self
+        where I: Iterator<Item=&'a (K, V)>,
+              K: 'a + AsRef<str>,
+              V: 'a + ToString
     {
-        // let pcs = pc.map(|s| s.to_string()).collect::<Vec<_>>();
+        let mut new_url = self.url.clone();
+        // Save params to Vec, to keep created Strings for V there
+        let sparams = params.map(|pair| {
+            let ref k = pair.0;
+            let ref v = pair.1;
+            (k, v.to_string())
+        }).collect::<Vec<_>>();
+        // Extract current query
         let current_query = match self.url.query_pairs() {
             Some(cq) => cq,
             None => vec!()
         };
-        let new_query = current_query.into_iter()
-            .chain(params.map(|pair| {
-                let (ref k, ref v) = *pair.borrow();
-                (k.to_string(), v.to_string())
-            }));
-        self.with_query_params(new_query)
+        // Create Iter<&str, &str> from current query params
+        let current_i = current_query.iter().map(|&(ref k, ref v)|
+                                                 (k.as_str(), v.as_str()));
+        // Create Iter from passed K and Strings created from V
+        let sparams_i = sparams.iter().map(|&(ref k, ref v)|
+                                           (k.as_ref(), v.as_str()));
+        // Chain current query with receieved params
+        let new_query = current_i.chain(sparams_i);
+        new_url.set_query_from_pairs(new_query);
+        Self::wrap(new_url)
     }
 
     /// Returns new uri, by appending path components
     fn with_path_components<E, I>(&self, paths: I) -> Self
         where I: Iterator<Item=E>,
-              E: ToString
+              E: Borrow<str>
     {
         let mut new_url = self.url.clone();
-        // // Protect from "borrow of `new_url` occurs here"
+        // Protect from "borrow of `new_url` occurs here"
         {
             // we will unwrap, because we want to use this for http urls only
             let mut path_components = new_url.path_mut().unwrap();
             path_components.clear();
-            path_components.extend(paths.map(|s| s.to_string()));
+            path_components.extend(paths.map(|s| s.borrow().to_string()));
         }
         Self::wrap(new_url)
     }
 
     fn add_path_components<E, I>(&self, paths: I) -> Self
         where I: Iterator<Item=E>,
-              E: ToString
+              E: Borrow<str>
     {
-        // XXX: horrible! find a way to do this better!
-        // XXX: problems: can't .to_string().as_str() due to lifetimes
-        let spaths = paths.map(|s| s.to_string()).collect::<Vec<_>>();
-        let mut current_paths = self.path_components();
-        current_paths.extend(spaths.iter().map(|s| s.as_str()));
-        self.with_path_components(current_paths.iter())
+        let mut new_url = self.url.clone();
+        {
+            // we will unwrap, because we want to use this for http urls only
+            let mut path_components = new_url.path_mut().unwrap();
+            path_components.extend(paths.map(|s| s.borrow().to_string()));
+        }
+        Self::wrap(new_url)
     }
 
     fn add_path(&self, path: &str) -> Self {
@@ -163,7 +177,8 @@ impl Consul {
 
     pub fn get_key(&self, key: &str, index: i32) -> hyper::Result<Response> {
         let url = self.endpoint
-            .with_path("/v1/kv").add_path(key)
+            .with_path("/v1/kv")
+            .add_path(key)
             .with_query_params([("wait", "10s")].iter())
             .add_query_params([("index", index)].iter());
         println!("Get {}...", url);
