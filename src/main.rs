@@ -1,6 +1,10 @@
 #![deny(warnings)]
 #![feature(collections)]
 #![feature(convert)]
+#![feature(custom_derive, plugin)]
+#![feature(custom_attribute)]
+
+#![plugin(serde_macros)]
 
 // packages
 #[macro_use]
@@ -10,6 +14,8 @@ extern crate collections;
 // ext
 extern crate hyper;
 extern crate argparse;
+extern crate serde;
+extern crate serde_json;
 
 // internal mods
 #[macro_use]

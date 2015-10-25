@@ -1,9 +1,8 @@
 
-// packages
-extern crate hyper;
-
 // ext libs
+use hyper;
 use hyper::{header};
+use serde_json;
 // traits
 use std::io::{Read};
 use std::fmt;
@@ -15,6 +14,25 @@ use std::thread;
 // internal
 use human_uri::HumanURI;
 use utils::*;
+
+
+
+#[derive(Deserialize, Debug)]
+struct ConsulValue  {
+    #[serde(rename="ModifyIndex")]
+    modify_index: u64,
+    #[serde(rename="Value")]
+    value: String,
+    // UNUSED
+    #[serde(rename="CreateIndex")]
+    create_index: u32,
+    #[serde(rename="LockIndex")]
+    lock_index: u32,
+    #[serde(rename="Key")]
+    key: String,
+    #[serde(rename="Flags")]
+    flags: u32
+}
 
 #[derive(Debug)]
 pub enum ConsulError {
@@ -85,7 +103,11 @@ impl Consul {
                         format!("Error response, code: {}", res.status),
                         body))
                 } else {
-                    Ok(body)
+                    let consul_value:Vec<ConsulValue> =
+                        serde_json::from_str(&body).unwrap();
+                    info!("{:?}", consul_value);
+                    let s = consul_value[0].value.clone();
+                    Ok(s)
                 }
             }
         }
