@@ -12,34 +12,17 @@ extern crate hyper;
 extern crate argparse;
 
 // internal mods
+#[macro_use]
+mod utils;
 mod consul;
 mod human_uri;
 
 // traits
-use std::io::{Read};
-use std::error::Error;
 // std
 // external
 // interal
 use consul::Consul;
 
-
-macro_rules! ignore{
-    ( $( $x:expr ),* ) => {
-        $(let _ = $x)*
-    }
-}
-
-fn sleep(seconds: u64) {
-    std::thread::sleep(std::time::Duration::new(seconds, 0));
-}
-
-fn error_description(e: &Error) -> String {
-    match e.cause() {
-        Some(inner) => format!("{}", inner),
-        None => format!("{}", e)
-    }
-}
 
 fn initialize_logging(level: log::LogLevelFilter) {
     use log4rs::{config,appender};
@@ -47,7 +30,7 @@ fn initialize_logging(level: log::LogLevelFilter) {
     let console = Box::new(appender::ConsoleAppender::builder().build());
     let config = config::Config::builder(root.build())
         .appender(config::Appender::builder("stderr".to_string(),
-                                            console).build());
+                                                    console).build());
     log4rs::init_config(config.build().unwrap()).unwrap();
 }
 
@@ -83,20 +66,14 @@ run docker container.");
     // opt_consul_key should not be None here, so unwrap safely
     let consul_key = opt_consul_key.unwrap();
     info!("Will watch for consul key: {}", consul_key);
-    let consul:Consul = Consul::new(&consul_endpoint);
+    let consul = Consul::new(&consul_endpoint);
+    let data = consul.watch_key(&consul_key);
     loop {
-        match consul.get_key(&consul_key, 1) {
-            Err(e) => error!("Error while requesting key {}: {}", consul_key, error_description(&e)),
-            Ok(mut res) => {
-                let mut body = String::new();
-                res.read_to_string(&mut body).unwrap();
-                if res.status != hyper::Ok {
-                    error!("HTTP Error: {}", res.status);
-                } else {
-                    info!("Response: {}", body);
-                }
+        match data.recv().unwrap() {
+            Err(e) => error!("{}", e),
+            Ok(body) => {
+                info!("Response: {}", body);
             }
         }
-        sleep(10);
     }
 }
