@@ -9,10 +9,10 @@ pub fn sleep(seconds: u64) {
     thread::sleep(Duration::new(seconds, 0));
 }
 
-pub fn error_description(e: &Error) -> String {
+pub fn error_description(e: &Error) -> &str {
     match e.cause() {
-        Some(inner) => format!("{}", inner),
-        None => format!("{}", e)
+        Some(inner) => inner.description(),
+        None => e.description()
     }
 }
 
