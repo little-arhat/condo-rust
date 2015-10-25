@@ -7,3 +7,5 @@ authors = ["Roma Sokolov <sokolov.r.v@gmail.com>"]
 hyper = "0.6.14"
 url = "*"
 argparse = "*"
+log = "0.3"
+log4rs = "0.3.3"
