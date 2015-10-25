@@ -106,12 +106,16 @@ impl HumanURI {
         Self::wrap(new_url)
     }
 
-    pub fn add_path(&self, path: &str) -> Self {
-        self.add_path_components(path.trim_left_matches('/').split("/"))
+    pub fn add_path<T:AsRef<str>>(&self, path: T) -> Self {
+        self.add_path_components(path.as_ref()
+                                 .trim_left_matches('/')
+                                 .split("/"))
     }
 
-    pub fn with_path(&self, path: &str) -> Self {
-        self.with_path_components(path.trim_left_matches('/').split("/"))
+    pub fn with_path<T:AsRef<str>>(&self, path: T) -> Self {
+        self.with_path_components(path.as_ref()
+                                  .trim_left_matches('/')
+                                  .split("/"))
     }
 
 }

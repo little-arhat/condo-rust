@@ -23,18 +23,14 @@ impl Consul {
         }
     }
 
-    pub fn ping(&self) {
-        println!("Will use consul on {}...", self.endpoint);
-    }
-
-    pub fn get_key(&self, key: &str, index: i32) -> hyper::Result<Response>
+    pub fn get_key<T:AsRef<str>>(&self, key: T, index: i32) -> hyper::Result<Response>
     {
         let url = self.endpoint
             .with_path("/v1/kv")
             .add_path(key)
             .with_query_params([("wait", "10s")].iter())
             .add_query_params([("index", index)].iter());
-        println!("Get {}...", url);
+        info!("Get {}...", url);
         self.client.get(url)
             .header(header::Connection::close())
             .send()
