@@ -8,6 +8,7 @@ use std::io::{Read};
 use std::fmt;
 use std::error;
 use std::error::Error;
+use std::convert::From;
 // std
 use std::sync::mpsc;
 use std::thread;
@@ -16,41 +17,28 @@ use human_uri::HumanURI;
 use utils::*;
 
 
-
-#[derive(Deserialize, Debug)]
-struct ConsulValue  {
-    #[serde(rename="ModifyIndex")]
-    modify_index: u64,
-    #[serde(rename="Value")]
-    value: String,
-    // UNUSED
-    #[serde(rename="CreateIndex")]
-    create_index: u32,
-    #[serde(rename="LockIndex")]
-    lock_index: u32,
-    #[serde(rename="Key")]
-    key: String,
-    #[serde(rename="Flags")]
-    flags: u32
-}
-
 #[derive(Debug)]
 pub enum ConsulError {
     HTTPError(String, String), // 404, 500, etc
-    IOError(hyper::Error) // not resolved, etc
+    IOError(hyper::Error), // not resolved, etc
+    ParseError(serde_json::Error), // wrong json
+    DataError(String, String) // wrong data inside json
 }
 
 impl error::Error for ConsulError {
     fn description(&self) -> &str {
         match self {
             &ConsulError::HTTPError(ref msg, _) => msg.as_str(),
-            &ConsulError::IOError(ref e) => error_description(e)
+            &ConsulError::IOError(ref e) => error_description(e),
+            &ConsulError::ParseError(ref e) => error_description(e),
+            &ConsulError::DataError(ref msg, _) => msg.as_str()
         }
     }
 
     fn cause(&self) -> Option<&error::Error> {
         match self {
             &ConsulError::IOError(ref err) => Some(err as &error::Error),
+            &ConsulError::ParseError(ref err) => Some(err as &error::Error),
             _ => None,
         }
     }
@@ -63,14 +51,64 @@ impl fmt::Display for ConsulError {
                 try!(msg.fmt(f));
                 body.fmt(f)
             },
-            &ConsulError::IOError(ref e) => e.description().fmt(f)
+            &ConsulError::IOError(ref e) => e.description().fmt(f),
+            &ConsulError::ParseError(ref e) => e.description().fmt(f),
+            &ConsulError::DataError(ref msg, ref value) => {
+                try!(msg.fmt(f));
+                value.fmt(f)
+            }
         }
+    }
+}
+
+impl From<hyper::Error> for ConsulError {
+    fn from(err: hyper::Error) -> ConsulError {
+        ConsulError::IOError(err)
+    }
+}
+
+impl From<serde_json::Error> for ConsulError {
+    fn from(err: serde_json::Error) -> ConsulError {
+        ConsulError::ParseError(err)
     }
 }
 
 pub struct Consul {
     client: hyper::Client,
     endpoint: HumanURI
+}
+
+fn some_or_error<T>(arg: Option<T>,
+                    msg: String, details: String) -> Result<T, ConsulError>
+{
+    match arg {
+        Some(a) => Ok(a),
+        None => Err(ConsulError::DataError(msg, details))
+    }
+}
+
+fn extract_consul_value(body: &str) -> Result<String, ConsulError> {
+    let parsed:serde_json::Value = try!(serde_json::from_str(body));
+    // Looks like boilerplate
+    let inner = match parsed.as_array() {
+        Some(a) if a.len() == 1 => {
+            a[0].to_owned() // Don't like this clone
+        },
+        _ =>
+            return Err(ConsulError::DataError("Expected 1-element array!".to_string(),
+                                              format!("{:?}", parsed)))
+    };
+    let obj = try!(some_or_error(inner.as_object(),
+                                 "Expected object!".to_string(),
+                                 format!("{:?}", inner)));
+    let value = try!(some_or_error(obj.get("Value"),
+                                   "No key named \"Value\" found!".to_string(),
+                                   format!("{:?}", obj)));
+    let encoded = try!(some_or_error(value.as_string(),
+                                     "Expected \"Value\" to be string!".to_string(),
+                                     format!("{:?}", value))).to_owned();
+    info!("{:?}", encoded);
+    Ok(encoded)
 }
 
 impl Consul {
@@ -90,26 +128,16 @@ impl Consul {
             .with_query_params([("wait", "10s")].iter())
             .add_query_params([("index", index)].iter());
         info!("Get {}...", url);
-        let result = self.client.get(url)
-            .header(header::Connection::close())
-            .send();
-        match result {
-            Err(e) => Err(ConsulError::IOError(e)),
-            Ok(mut res) => {
-                let mut body = String::new();
-                res.read_to_string(&mut body).unwrap();
-                if res.status != hyper::Ok {
-                    Err(ConsulError::HTTPError(
-                        format!("Error response, code: {}", res.status),
-                        body))
-                } else {
-                    let consul_value:Vec<ConsulValue> =
-                        serde_json::from_str(&body).unwrap();
-                    info!("{:?}", consul_value);
-                    let s = consul_value[0].value.clone();
-                    Ok(s)
-                }
-            }
+        let mut response = try!(self.client.get(url)
+                                .header(header::Connection::close())
+                                .send());
+        let mut body = String::new();
+        response.read_to_string(&mut body).unwrap();
+        if response.status != hyper::Ok {
+            Err(ConsulError::HTTPError(
+                format!("Error response, code: {}", response.status), body))
+        } else {
+            Ok(try!(extract_consul_value(&body)))
         }
     }
 

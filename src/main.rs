@@ -1,10 +1,6 @@
 #![deny(warnings)]
 #![feature(collections)]
 #![feature(convert)]
-#![feature(custom_derive, plugin)]
-#![feature(custom_attribute)]
-
-#![plugin(serde_macros)]
 
 // packages
 #[macro_use]
