@@ -3,8 +3,7 @@
 #![feature(convert)]
 
 // packages
-#[macro_use]
-extern crate log;
+#[macro_use] extern crate log;
 extern crate log4rs;
 extern crate collections;
 // ext
@@ -28,11 +27,15 @@ use consul::Consul;
 
 fn initialize_logging(level: log::LogLevelFilter) {
     use log4rs::{config,appender};
-    let root = config::Root::builder(level).appender("stderr".to_string());
+    let root = config::Root::builder(log::LogLevelFilter::Error)
+        .appender("stderr".to_string());
+    let logger = config::Logger::builder("condo_r".to_string(), level)
+        .appender("stderr".to_string());
     let console = Box::new(appender::ConsoleAppender::builder().build());
     let config = config::Config::builder(root.build())
         .appender(config::Appender::builder("stderr".to_string(),
-                                                    console).build());
+                                            console).build())
+        .logger(logger.build());
     log4rs::init_config(config.build().unwrap()).unwrap();
 }
 
@@ -42,7 +45,7 @@ fn main() {
     let consul_help = format!("Address of consul agent to query; can \
 be set via {} env var; default: {}", consul_env, consul_endpoint);
     let mut opt_consul_key:Option<String> = None;
-    let mut log_level = log::LogLevelFilter::Info;
+    let mut log_level = log::LogLevelFilter::Debug;
     {
         let mut ap = argparse::ArgumentParser::new();
         ap.set_description("Condo: watch for consul key and \
