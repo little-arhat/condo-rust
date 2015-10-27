@@ -30,7 +30,7 @@ fn initialize_logging(level: log::LogLevelFilter) {
     let root = config::Root::builder(log::LogLevelFilter::Error)
         .appender("stderr".to_string());
     let logger = config::Logger::builder("condo_r".to_string(), level)
-        .appender("stderr".to_string());
+        .additive(true);
     let console = Box::new(appender::ConsoleAppender::builder().build());
     let config = config::Config::builder(root.build())
         .appender(config::Appender::builder("stderr".to_string(),
