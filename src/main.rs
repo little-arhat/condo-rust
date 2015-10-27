@@ -73,12 +73,7 @@ run docker container.");
     info!("Will watch for consul key: {}", consul_key);
     let consul = Consul::new(&consul_endpoint);
     let data = consul.watch_key(&consul_key);
-    loop {
-        match data.recv() {
-            Err(e) => error!("Error reading from consul channel: {}", e),
-            Ok(spec) => {
-                info!("Response: {}", spec);
-            }
-        }
+    for spec in data.iter() {
+        info!("Response: {}", spec);
     }
 }
