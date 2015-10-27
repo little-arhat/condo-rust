@@ -8,7 +8,7 @@ extern crate log;
 extern crate log4rs;
 extern crate collections;
 // ext
-extern crate hyper;
+#[macro_use] extern crate hyper;
 extern crate argparse;
 extern crate serde;
 extern crate serde_json;
@@ -71,10 +71,10 @@ run docker container.");
     let consul = Consul::new(&consul_endpoint);
     let data = consul.watch_key(&consul_key);
     loop {
-        match data.recv().unwrap() {
-            Err(e) => error!("{}", e),
-            Ok(body) => {
-                info!("Response: {}", body);
+        match data.recv() {
+            Err(e) => error!("Error reading from consul channel: {}", e),
+            Ok(spec) => {
+                info!("Response: {}", spec);
             }
         }
     }
