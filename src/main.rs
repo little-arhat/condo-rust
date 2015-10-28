@@ -2,6 +2,11 @@
 #![feature(collections)]
 #![feature(convert)]
 
+#![feature(custom_derive, plugin)]
+#![feature(custom_attribute)]
+
+#![plugin(serde_macros)]
+
 // packages
 #[macro_use] extern crate log;
 extern crate log4rs;
@@ -12,8 +17,10 @@ extern crate argparse;
 extern crate serde;
 extern crate serde_json;
 
+
 // internal mods
 #[macro_use] mod utils;
+mod spec;
 mod human_uri;
 mod consul;
 mod condo;
