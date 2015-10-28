@@ -13,16 +13,16 @@ extern crate serde;
 extern crate serde_json;
 
 // internal mods
-#[macro_use]
-mod utils;
-mod consul;
+#[macro_use] mod utils;
 mod human_uri;
+mod consul;
+mod condo;
 
 // traits
 // std
 // external
 // interal
-use consul::Consul;
+
 
 
 fn initialize_logging(level: log::LogLevelFilter) {
@@ -71,9 +71,13 @@ run docker container.");
     // opt_consul_key should not be None here, so unwrap safely
     let consul_key = opt_consul_key.unwrap();
     info!("Will watch for consul key: {}", consul_key);
-    let consul = Consul::new(&consul_endpoint);
-    let data = consul.watch_key(&consul_key);
-    for spec in data.iter() {
-        info!("Response: {}", spec);
+    let consul = consul::Consul::new(&consul_endpoint);
+    let specs = consul.watch_key(&consul_key);
+    let condo = condo::Condo::new(specs);
+    let handle = condo.start();
+    let r = handle.join();
+    match r {
+        Err(_) => error!("Error!"),
+        Ok(_) => info!("Done!")
     }
 }
