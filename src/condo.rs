@@ -22,11 +22,11 @@ impl Condo {
 
     pub fn start(self) -> thread::JoinHandle<()> {
         thread::spawn(move || {
-            for spec in self.specs.iter() {
-                info!("Spec received: {}", &spec);
-                let env:Vec<Env> =
-                    serde_json::from_str(&spec).unwrap();
-                info!("Spec parsed: {:?}", env);
+            for json_spec in self.specs.iter() {
+                info!("Spec received: {}", &json_spec);
+                let spec:Spec =
+                    serde_json::from_str(&json_spec).unwrap();
+                info!("Spec parsed: {:?}", spec);
             }
         })
     }
