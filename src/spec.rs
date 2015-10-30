@@ -17,11 +17,54 @@ pub struct Image {
     tag: String
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Debug)]
 pub enum CheckMethod {
     Script(String),
     Http(String),
     HttpPath(String)
+}
+
+impl Deserialize for CheckMethod {
+    fn deserialize<D>(deserializer: &mut D) -> Result<Self, D::Error>
+        where D: Deserializer
+    {
+        deserializer.visit(CheckMethodEnumVisitor)
+    }
+}
+
+struct CheckMethodEnumVisitor;
+
+impl de::Visitor for CheckMethodEnumVisitor {
+    type Value = CheckMethod;
+
+    fn visit_seq<V>(&mut self, mut v: V) -> Result<Self::Value, V::Error>
+        where V: de::SeqVisitor
+    {
+        let variants = vec!("Script", "Http", "HttpPath");
+        let ret = match try!(v.visit::<String>()) {
+            Some(ref m) if variants.contains(&m.as_str()) => {
+                match try!(v.visit::<String>()) {
+                    Some(s) => {
+                        match m.as_str() {
+                            "Script" => CheckMethod::Script(s),
+                            "Http" => CheckMethod::Http(s),
+                            "HttpPath" => CheckMethod::HttpPath(s),
+                            _ => panic!("can't happen")
+                        }
+                    },
+                    None => return Err(V::Error::type_mismatch(de::Type::String))
+                }
+            },
+            Some(v) => return Err(V::Error::unknown_field(&v)),
+            None => return Err(V::Error::length_mismatch(0))
+        };
+        try!(v.end());
+        Ok(ret)
+    }
+}
+
+impl Default for CheckMethod {
+    fn default() -> CheckMethod { CheckMethod::Script("echo".to_string()) }
 }
 
 #[derive(Deserialize, Debug)]
@@ -37,6 +80,7 @@ pub struct Service {
     port: u16,
     tags: Vec<String>,
     check: Check,
+    #[serde(default)]
     udp: bool,
     host_port: Option<u16>
 }
@@ -115,6 +159,7 @@ pub struct Spec {
     cmd: Vec<String>,
     services: Vec<Service>,
     envs: Vec<EnvVar>,
+    discoveries: Vec<Discovery>,
     #[serde(skip_serializing_if_none, default)]
     name: Option<String>,
     #[serde(skip_serializing_if_none, default)]
