@@ -5,19 +5,19 @@ use serde::{Deserialize, Deserializer, de};
 // traits
 use serde::de::Error;
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct EnvVar {
     name: String,
     value: String
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Image {
     name: String,
     tag: String
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum CheckMethod {
     Script(String),
     Http(String),
@@ -67,14 +67,14 @@ impl Default for CheckMethod {
     fn default() -> CheckMethod { CheckMethod::Script("echo".to_string()) }
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Check {
     method: CheckMethod,
     interval: u16,
     timeout: u16
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Service {
     name: String,
     port: u16,
@@ -85,7 +85,7 @@ pub struct Service {
     host_port: Option<u16>
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Discovery {
     service: String,
     env: String,
@@ -95,13 +95,13 @@ pub struct Discovery {
     tag: Option<String>
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Volume {
     from: String,
     to: String
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Log {
     #[serde(rename="type")]
     log_type: String,
@@ -110,7 +110,7 @@ pub struct Log {
 }
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Stop {
     Before,
     AfterTimeout(u16)
@@ -153,7 +153,7 @@ impl Default for Stop {
     fn default() -> Stop { Stop::AfterTimeout(10) }
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Spec {
     image: Image,
     cmd: Vec<String>,

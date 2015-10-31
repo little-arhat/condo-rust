@@ -95,8 +95,8 @@ run docker container.");
     }
 
     let specs = consul.watch_key(&consul_key);
-    let dispatcher = dispatcher::Dispatcher::new(specs);
-    let handle = dispatcher.start();
+    let dispatcher = dispatcher::Dispatcher::new();
+    let handle = dispatcher.start(specs);
     let r = handle.join();
     match r {
         Err(_) => error!("Error!"),
