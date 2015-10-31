@@ -11,6 +11,7 @@
 #[macro_use] extern crate log;
 extern crate log4rs;
 extern crate collections;
+extern crate nix;
 // ext
 #[macro_use] extern crate hyper;
 extern crate argparse;
@@ -23,13 +24,19 @@ extern crate serde_json;
 mod spec;
 mod human_uri;
 mod consul;
-mod condo;
+mod dispatcher;
 
 // traits
 // std
+use std::process::exit;
 // external
+use nix::sys::signal;
 // interal
 
+extern fn handle_sigint(_:i32) {
+    println!("SIGINT");
+    exit(0);
+}
 
 
 fn initialize_logging(level: log::LogLevelFilter) {
@@ -79,9 +86,17 @@ run docker container.");
     let consul_key = opt_consul_key.unwrap();
     info!("Will watch for consul key: {}", consul_key);
     let consul = consul::Consul::new(&consul_endpoint);
+
+    unsafe {
+        let sig_action = signal::SigAction::new(handle_sigint,
+                                                signal::SockFlag::empty(),
+                                                signal::SigSet::empty());
+        ignore_result!(signal::sigaction(signal::SIGINT, &sig_action));
+    }
+
     let specs = consul.watch_key(&consul_key);
-    let condo = condo::Condo::new(specs);
-    let handle = condo.start();
+    let dispatcher = dispatcher::Dispatcher::new(specs);
+    let handle = dispatcher.start();
     let r = handle.join();
     match r {
         Err(_) => error!("Error!"),

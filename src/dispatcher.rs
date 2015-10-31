@@ -8,22 +8,22 @@ use std::thread;
 // internal
 use spec::*;
 
-pub struct Condo {
-    specs: mpsc::Receiver<String>
+pub struct Dispatcher {
+    input: mpsc::Receiver<String>
 }
 
 
-impl Condo {
+impl Dispatcher {
     #[inline]
     pub fn new(input: mpsc::Receiver<String>) -> Self {
-        Condo{
+        Dispatcher{
             specs: input
         }
     }
 
     pub fn start(self) -> thread::JoinHandle<()> {
         thread::spawn(move || {
-            for json_spec in self.specs.iter() {
+            for json_spec in self.input.iter() {
                 let spec:Spec =
                     serde_json::from_str(&json_spec).unwrap();
                 info!("Received spec: {:?}", spec);
