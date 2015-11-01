@@ -88,17 +88,24 @@ impl Dispatcher {
     pub fn start(mut self, input: mpsc::Receiver<String>) -> thread::JoinHandle<()> {
         thread::spawn(move || {
             for json_spec in input.iter() {
-                let spec:Spec =
-                    serde_json::from_str(&json_spec).unwrap();
-                debug!("Received spec: {:?}", spec);
-                match self.state {
-                    State::Start => {
-                        self = self.on_spec_received_no_stable(spec)
+                debug!("Received json spec: {}", json_spec);
+                let res_spec:serde_json::Result<Spec> = serde_json::from_str(&json_spec);
+                match res_spec {
+                    Ok(spec) => {
+                        info!("Got new spec: {:?}", spec);
+                        match self.state {
+                            State::Start => {
+                                self = self.on_spec_received_no_stable(spec)
+                            },
+                            State::RunningStable{..} => {
+                                self = self.on_spec_received(spec)
+                            },
+                            _ => panic!("can't happen")
+                        }
                     },
-                    State::RunningStable{..} => {
-                        self = self.on_spec_received(spec)
+                    Err(e) => {
+                        warn!("Error while parsing spec: {}, ignore...", e)
                     }
-                    _ => panic!("can't happen")
                 }
             }
         })
