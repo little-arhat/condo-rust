@@ -7,14 +7,14 @@ use serde::de::Error;
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct EnvVar {
-    name: String,
-    value: String
+    pub name: String,
+    pub value: String
 }
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Image {
-    name: String,
-    tag: String
+    pub name: String,
+    pub tag: String
 }
 
 #[derive(Debug, Clone)]
@@ -69,44 +69,44 @@ impl Default for CheckMethod {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Check {
-    method: CheckMethod,
-    interval: u16,
-    timeout: u16
+    pub method: CheckMethod,
+    pub interval: u16,
+    pub timeout: u16
 }
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Service {
-    name: String,
-    port: u16,
-    tags: Vec<String>,
-    check: Check,
+    pub name: String,
+    pub port: u16,
+    pub tags: Vec<String>,
+    pub check: Check,
     #[serde(default)]
-    udp: bool,
-    host_port: Option<u16>
+    pub udp: bool,
+    pub host_port: Option<u16>
 }
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Discovery {
-    service: String,
-    env: String,
+    pub service: String,
+    pub env: String,
     #[serde(default)]
-    multiple: bool,
+    pub multiple: bool,
     #[serde(skip_serializing_if_none, default)]
-    tag: Option<String>
+    pub tag: Option<String>
 }
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Volume {
-    from: String,
-    to: String
+    pub from: String,
+    pub to: String
 }
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Log {
     #[serde(rename="type")]
-    log_type: String,
+    pub log_type: String,
     #[serde(skip_serializing_if_none, default)]
-    config: Option<serde_json::Value>
+    pub config: Option<serde_json::Value>
 }
 
 
@@ -155,24 +155,24 @@ impl Default for Stop {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Spec {
-    image: Image,
-    cmd: Vec<String>,
-    services: Vec<Service>,
-    envs: Vec<EnvVar>,
-    discoveries: Vec<Discovery>,
+    pub image: Image,
+    pub cmd: Vec<String>,
+    pub services: Vec<Service>,
+    pub envs: Vec<EnvVar>,
+    pub discoveries: Vec<Discovery>,
     #[serde(skip_serializing_if_none, default)]
-    name: Option<String>,
+    pub name: Option<String>,
     #[serde(skip_serializing_if_none, default)]
-    host: Option<String>,
+    pub host: Option<String>,
     #[serde(skip_serializing_if_none, default)]
-    user: Option<String>,
+    pub user: Option<String>,
     #[serde(default)]
-    privileged: bool,
+    pub privileged: bool,
     #[serde(skip_serializing_if_none, default)]
-    network_mode: Option<String>,
+    pub network_mode: Option<String>,
     #[serde(default)]
-    stop: Stop,
-    kill_timeout: Option<u16>,
+    pub stop: Stop,
+    pub kill_timeout: Option<u16>,
     #[serde(skip_serializing_if_none, default)]
-    log: Option<Log>
+    pub log: Option<Log>
 }

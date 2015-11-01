@@ -9,41 +9,71 @@ use std::fmt;
 // internal
 use spec::*;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
+struct Deploy {
+    spec: Spec
+}
+
+impl Deploy {
+    fn new(spec: Spec) -> Self {
+        Deploy{
+            spec: spec
+        }
+    }
+}
+
+#[derive(Clone,Debug)]
 enum State {
     Start,
-    WaitingForFirstStable{candidate: Spec},
-    HasStable{stable: Spec, current: Spec}
+    WaitingForFirstStable{candidate: Deploy},
+    RunningStable{current: Deploy},
+    WaitingForNewStable{last_stable: Deploy, candidate: Deploy},
+    RunningStableWaitingForNew{current: Deploy, candidate: Deploy}
 }
 
 impl State {
-    fn candidate(&self) -> Spec {
+    fn candidate(self) -> Deploy {
         match self {
-            &State::WaitingForFirstStable{ref candidate} => candidate.to_owned(),
+            State::WaitingForFirstStable{candidate} => candidate,
+            State::WaitingForNewStable{candidate, ..} => candidate,
+            State::RunningStableWaitingForNew{candidate, ..} => candidate,
+            _ => panic!("Can't happen")
+        }
+    }
+
+    fn current(self) -> Deploy {
+        match self {
+            State::RunningStable{current} => current,
+            State::RunningStableWaitingForNew{current, ..} => current,
+            _ => panic!("Can't happen")
+        }
+    }
+
+    fn stable(self) -> Deploy {
+        match self {
+            State::RunningStable{current} => current,
+            State::WaitingForNewStable{last_stable, ..} => last_stable,
+            State::RunningStableWaitingForNew{current, ..} => current,
             _ => panic!("Can't happen")
         }
     }
 }
 
-impl fmt::Debug for State {
-    #[allow(unused_variables)]
+impl fmt::Display for State {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let s = match self {
             &State::Start => "Start",
-            &State::WaitingForFirstStable{ref candidate} => "WaitingForFirstStable",
-            &State::HasStable{ref stable, ref current} => "HasStable"
+            &State::WaitingForFirstStable{..} => "WaitingForFirstStable",
+            &State::WaitingForNewStable{..} => "WaitingForNewStable",
+            &State::RunningStable{..} => "RunningStable",
+            &State::RunningStableWaitingForNew{..} => "RunningStableWaitingForNew"
         };
         write!(f, "{}", s)
     }
 }
 
 pub struct Dispatcher {
-    // input: mpsc::Receiver<String>,
     state: State
-        // ,
-    // stable: Option<Spec>,
-    // current: Option<Spec>,
-    // candidate: Option<Spec>
 }
 
 
@@ -51,11 +81,7 @@ impl Dispatcher {
     #[inline]
     pub fn new() -> Self {
         Dispatcher{
-            // input: input,
             state: State::Start
-            // stable: None,
-            // current: None,
-            // candidate: None
         }
     }
 
@@ -66,41 +92,111 @@ impl Dispatcher {
                     serde_json::from_str(&json_spec).unwrap();
                 debug!("Received spec: {:?}", spec);
                 match self.state {
-                    State::Start => self.on_spec_received_no_stable(spec),
+                    State::Start => {
+                        self = self.on_spec_received_no_stable(spec)
+                    },
+                    State::RunningStable{..} => {
+                        self = self.on_spec_received(spec)
+                    }
                     _ => panic!("can't happen")
                 }
             }
         })
     }
 
-    fn on_error_no_stable(&mut self) {
-        info!("State transition from {:?}...", self.state);
+    fn start_transition(&self) {
+        info!("State transition from {}...", self.state);
+    }
+
+    fn end_transition(&self) {
+        info!("To {}!", self.state);
+    }
+
+    fn on_error_no_stable(mut self) -> Self {
+        self.start_transition();
         self.state = State::Start;
-        info!("To {:?}!", self.state);
+        self.end_transition();
+        self
     }
 
-    fn on_got_stable(&mut self) {
-        info!("State transition from {:?}...", self.state);
-        let candidate = self.state.candidate();
-        self.state = State::HasStable{current: candidate.clone(),
-                                      stable: candidate};
-        info!("To {:?}!", self.state);
+    fn on_error_restore_stable(mut self) -> Self {
+        self.start_transition();
+        // restore last stable
+        let stable = self.state.stable();
+        // run stable
+        self.state = State::RunningStable{current: stable};
+        self.end_transition();
+        self
     }
 
-    fn on_spec_received_no_stable(&mut self, spec: Spec) {
-        info!("State transition from {:?}...", self.state);
-        self.state = State::WaitingForFirstStable{candidate: spec};
-        info!("To {:?}!", self.state);
-        // start candidate, wait for result
-        let result = true;
-        if result {
-            // Healthy
-            self.on_got_stable();
-        } else {
-            // NotHealthy
-            self.on_error_no_stable();
+    fn on_error_discard_candidate(mut self) -> Self {
+        self.start_transition();
+        // run stable
+        self.state = State::RunningStable{current: self.state.stable()};
+        self.end_transition();
+        self
+    }
+
+    fn on_got_stable(mut self) -> Self {
+        self.start_transition();
+        self.state = State::RunningStable{current: self.state.candidate()};
+        self.end_transition();
+        self
+    }
+
+    fn on_spec_received(mut self, spec: Spec) -> Self {
+        self.start_transition();
+        match spec.stop {
+            Stop::Before => {
+                // stop current
+                let current = self.state.current();
+                self.state = State::WaitingForNewStable{
+                    candidate: Deploy::new(spec),
+                    last_stable: current
+                };
+                self.end_transition();
+                // start candidate, wait for results
+                let result = true;
+                if result {
+                    // healthy
+                    self.on_got_stable()
+                } else {
+                    // eror
+                    self.on_error_restore_stable()
+                }
+            },
+            Stop::AfterTimeout(_) => {
+                // start candidate
+                self.state = State::RunningStableWaitingForNew{
+                    current: self.state.current(),
+                    candidate: Deploy::new(spec)
+                };
+                self.end_transition();
+                // start candidate, wait for results
+                let result = true;
+                if result {
+                    // healthy
+                    self.on_got_stable()
+                } else {
+                    // error
+                    self.on_error_discard_candidate()
+                }
+            }
         }
     }
 
+    fn on_spec_received_no_stable(mut self, spec: Spec) -> Self {
+        self.start_transition();
+        self.state = State::WaitingForFirstStable{candidate: Deploy::new(spec)};
+        self.end_transition();
+        let result = true;
+        if result {
+            // Healthy
+            self.on_got_stable()
+        } else {
+            // NotHealthy
+            self.on_error_no_stable()
+        }
+    }
 
 }
