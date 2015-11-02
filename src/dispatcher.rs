@@ -22,6 +22,11 @@ impl Deploy {
     }
 }
 
+#[derive(Clone, Debug)]
+enum Event {
+    NewSpec(Spec)
+}
+
 #[derive(Clone,Debug)]
 enum State {
     Start,
@@ -72,6 +77,21 @@ impl fmt::Display for State {
     }
 }
 
+fn spec_parser(jsons: mpsc::Receiver<String>, events: mpsc::Sender<Event>) {
+    for json_spec in jsons.iter() {
+        debug!("Received json spec: {}", json_spec);
+        let res_spec:serde_json::Result<Spec> = serde_json::from_str(&json_spec);
+        match res_spec {
+            Ok(spec) => {
+                ignore_result!(events.send(Event::NewSpec(spec)));
+            },
+            Err(e) => {
+                warn!("Error while parsing spec: {}, ignore...", e);
+            }
+        }
+    }
+}
+
 pub struct Dispatcher {
     state: State
 }
@@ -87,25 +107,23 @@ impl Dispatcher {
 
     pub fn start(mut self, input: mpsc::Receiver<String>) -> thread::JoinHandle<()> {
         thread::spawn(move || {
-            for json_spec in input.iter() {
-                debug!("Received json spec: {}", json_spec);
-                let res_spec:serde_json::Result<Spec> = serde_json::from_str(&json_spec);
-                match res_spec {
-                    Ok(spec) => {
-                        info!("Got new spec: {:?}", spec);
-                        match self.state {
-                            State::Start => {
-                                self = self.on_spec_received_no_stable(spec)
-                            },
-                            State::RunningStable{..} => {
-                                self = self.on_spec_received(spec)
-                            },
-                            _ => panic!("can't happen")
+            let (send_events, receive_events) = mpsc::channel();
+            thread::spawn(move || spec_parser(input, send_events.clone()));
+
+            for event in receive_events.iter() {
+                debug!("Received event: {:?}", event);
+                match self.state {
+                    State::Start => match event {
+                        Event::NewSpec(spec) => {
+                            self = self.on_spec_received_no_stable(spec)
                         }
                     },
-                    Err(e) => {
-                        warn!("Error while parsing spec: {}, ignore...", e)
-                    }
+                    State::RunningStable{..} => match event {
+                        Event::NewSpec(spec) => {
+                            self = self.on_spec_received(spec)
+                        }
+                    },
+                    _ => panic!("can't happen")
                 }
             }
         })
