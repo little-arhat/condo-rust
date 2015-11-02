@@ -18,10 +18,10 @@ extern crate argparse;
 extern crate serde;
 extern crate serde_json;
 
-
 // internal mods
 #[macro_use] mod utils;
 mod spec;
+mod event;
 mod human_uri;
 mod consul;
 mod dispatcher;
@@ -82,24 +82,28 @@ run docker container.");
         ap.parse_args_or_exit();
     }
     initialize_logging(log_level);
-    // opt_consul_key should not be None here, so unwrap safely
-    let consul_key = opt_consul_key.unwrap();
-    info!("Will watch for consul key: {}", consul_key);
-    let consul = consul::Consul::new(&consul_endpoint);
-
     unsafe {
         let sig_action = signal::SigAction::new(handle_sigint,
                                                 signal::SockFlag::empty(),
                                                 signal::SigSet::empty());
         ignore_result!(signal::sigaction(signal::SIGINT, &sig_action));
     }
-
-    let specs = consul.watch_key(&consul_key);
+    // opt_consul_key should not be None here, so unwrap safely
+    let consul_key = opt_consul_key.unwrap();
+    info!("Will watch for consul key: {}", consul_key);
+    let consul = consul::Consul::new(&consul_endpoint);
+    let rx_json_specs = consul.watch_key(&consul_key);
     let dispatcher = dispatcher::Dispatcher::new();
-    let handle = dispatcher.start(specs);
-    let r = handle.join();
-    match r {
-        Err(_) => error!("Error!"),
-        Ok(_) => info!("Done!")
+    let (_, tx_events) = dispatcher.start();
+    for json_spec in rx_json_specs.iter() {
+        debug!("Received json spec: {}", json_spec);
+        match spec::parse_spec(&json_spec) {
+            Ok(spec) => {
+                ignore_result!(tx_events.send(event::Event::NewSpec(spec)));
+            },
+            Err(e) => {
+                warn!("Error while parsing spec: {}, ignore...", e);
+            }
+        }
     }
 }

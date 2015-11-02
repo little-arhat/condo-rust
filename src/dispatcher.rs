@@ -1,6 +1,5 @@
 
 // ext libs
-use serde_json;
 // traits
 // std
 use std::sync::mpsc;
@@ -8,6 +7,7 @@ use std::thread;
 use std::fmt;
 // internal
 use spec::*;
+use event::*;
 
 #[derive(Clone, Debug)]
 struct Deploy {
@@ -20,11 +20,6 @@ impl Deploy {
             spec: spec
         }
     }
-}
-
-#[derive(Clone, Debug)]
-enum Event {
-    NewSpec(Spec)
 }
 
 #[derive(Clone,Debug)]
@@ -77,21 +72,6 @@ impl fmt::Display for State {
     }
 }
 
-fn spec_parser(jsons: mpsc::Receiver<String>, events: mpsc::Sender<Event>) {
-    for json_spec in jsons.iter() {
-        debug!("Received json spec: {}", json_spec);
-        let res_spec:serde_json::Result<Spec> = serde_json::from_str(&json_spec);
-        match res_spec {
-            Ok(spec) => {
-                ignore_result!(events.send(Event::NewSpec(spec)));
-            },
-            Err(e) => {
-                warn!("Error while parsing spec: {}, ignore...", e);
-            }
-        }
-    }
-}
-
 pub struct Dispatcher {
     state: State
 }
@@ -105,11 +85,9 @@ impl Dispatcher {
         }
     }
 
-    pub fn start(mut self, input: mpsc::Receiver<String>) -> thread::JoinHandle<()> {
-        thread::spawn(move || {
-            let (send_events, receive_events) = mpsc::channel();
-            thread::spawn(move || spec_parser(input, send_events.clone()));
-
+    pub fn start(mut self) -> (thread::JoinHandle<()>, mpsc::Sender<Event>) {
+        let (send_events, receive_events) = mpsc::channel();
+        let h = thread::spawn(move || {
             for event in receive_events.iter() {
                 debug!("Received event: {:?}", event);
                 match self.state {
@@ -126,7 +104,8 @@ impl Dispatcher {
                     _ => panic!("can't happen")
                 }
             }
-        })
+        });
+        (h, send_events.clone())
     }
 
     fn start_transition(&self) {

@@ -4,6 +4,7 @@ use serde_json;
 use serde::{Deserialize, Deserializer, de};
 // traits
 use serde::de::Error;
+// interntal
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct EnvVar {
@@ -175,4 +176,8 @@ pub struct Spec {
     pub kill_timeout: Option<u16>,
     #[serde(skip_serializing_if_none, default)]
     pub log: Option<Log>
+}
+
+pub fn parse_spec(json: &str) -> serde_json::Result<Spec> {
+    serde_json::from_str(&json)
 }
