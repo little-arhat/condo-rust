@@ -4,6 +4,7 @@ use serde_json;
 use serde::{Deserialize, Deserializer, de};
 // traits
 use serde::de::Error;
+use std::str::FromStr;
 // interntal
 
 #[derive(Deserialize, Debug, Clone)]
@@ -178,6 +179,9 @@ pub struct Spec {
     pub log: Option<Log>
 }
 
-pub fn parse_spec(json: &str) -> serde_json::Result<Spec> {
-    serde_json::from_str(&json)
+impl FromStr for Spec {
+    type Err = serde_json::error::Error;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        serde_json::from_str(&s)
+    }
 }

@@ -31,33 +31,6 @@ enum State {
     RunningStableWaitingForNew{current: Deploy, candidate: Deploy}
 }
 
-impl State {
-    fn candidate(self) -> Deploy {
-        match self {
-            State::WaitingForFirstStable{candidate} => candidate,
-            State::WaitingForNewStable{candidate, ..} => candidate,
-            State::RunningStableWaitingForNew{candidate, ..} => candidate,
-            _ => panic!("Can't happen")
-        }
-    }
-
-    fn current(self) -> Deploy {
-        match self {
-            State::RunningStable{current} => current,
-            State::RunningStableWaitingForNew{current, ..} => current,
-            _ => panic!("Can't happen")
-        }
-    }
-
-    fn stable(self) -> Deploy {
-        match self {
-            State::RunningStable{current} => current,
-            State::WaitingForNewStable{last_stable, ..} => last_stable,
-            State::RunningStableWaitingForNew{current, ..} => current,
-            _ => panic!("Can't happen")
-        }
-    }
-}
 
 impl fmt::Display for State {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -73,134 +46,111 @@ impl fmt::Display for State {
 }
 
 pub struct Dispatcher {
-    state: State
+    state: State,
+    send_events: mpsc::Sender<Event>,
+    receive_events: mpsc::Receiver<Event>
 }
 
 
 impl Dispatcher {
     #[inline]
     pub fn new() -> Self {
-        Dispatcher{
-            state: State::Start
-        }
-    }
-
-    pub fn start(mut self) -> (thread::JoinHandle<()>, mpsc::Sender<Event>) {
         let (send_events, receive_events) = mpsc::channel();
-        let h = thread::spawn(move || {
-            for event in receive_events.iter() {
-                debug!("Received event: {:?}", event);
-                match self.state {
-                    State::Start => match event {
-                        Event::NewSpec(spec) => {
-                            self = self.on_spec_received_no_stable(spec)
-                        }
-                    },
-                    State::RunningStable{..} => match event {
-                        Event::NewSpec(spec) => {
-                            self = self.on_spec_received(spec)
-                        }
-                    },
-                    _ => panic!("can't happen")
-                }
-            }
-        });
-        (h, send_events.clone())
-    }
-
-    fn start_transition(&self) {
-        info!("State transition from {}...", self.state);
-    }
-
-    fn end_transition(&self) {
-        info!("To {}!", self.state);
-    }
-
-    fn on_error_no_stable(mut self) -> Self {
-        self.start_transition();
-        self.state = State::Start;
-        self.end_transition();
-        self
-    }
-
-    fn on_error_restore_stable(mut self) -> Self {
-        self.start_transition();
-        // restore last stable
-        let stable = self.state.stable();
-        // run stable
-        self.state = State::RunningStable{current: stable};
-        self.end_transition();
-        self
-    }
-
-    fn on_error_discard_candidate(mut self) -> Self {
-        self.start_transition();
-        // run stable
-        self.state = State::RunningStable{current: self.state.stable()};
-        self.end_transition();
-        self
-    }
-
-    fn on_got_stable(mut self) -> Self {
-        self.start_transition();
-        self.state = State::RunningStable{current: self.state.candidate()};
-        self.end_transition();
-        self
-    }
-
-    fn on_spec_received(mut self, spec: Spec) -> Self {
-        self.start_transition();
-        match spec.stop {
-            Stop::Before => {
-                // stop current
-                let current = self.state.current();
-                self.state = State::WaitingForNewStable{
-                    candidate: Deploy::new(spec),
-                    last_stable: current
-                };
-                self.end_transition();
-                // start candidate, wait for results
-                let result = true;
-                if result {
-                    // healthy
-                    self.on_got_stable()
-                } else {
-                    // eror
-                    self.on_error_restore_stable()
-                }
-            },
-            Stop::AfterTimeout(_) => {
-                // start candidate
-                self.state = State::RunningStableWaitingForNew{
-                    current: self.state.current(),
-                    candidate: Deploy::new(spec)
-                };
-                self.end_transition();
-                // start candidate, wait for results
-                let result = true;
-                if result {
-                    // healthy
-                    self.on_got_stable()
-                } else {
-                    // error
-                    self.on_error_discard_candidate()
-                }
-            }
+        Dispatcher{
+            state: State::Start,
+            send_events: send_events,
+            receive_events: receive_events
         }
     }
 
-    fn on_spec_received_no_stable(mut self, spec: Spec) -> Self {
-        self.start_transition();
-        self.state = State::WaitingForFirstStable{candidate: Deploy::new(spec)};
-        self.end_transition();
-        let result = true;
-        if result {
-            // Healthy
-            self.on_got_stable()
-        } else {
-            // NotHealthy
-            self.on_error_no_stable()
+    pub fn start(self) -> (thread::JoinHandle<()>, mpsc::Sender<Event>) {
+        let send_events = self.send_events.clone();
+        let h = thread::spawn(move || self.listen_events());
+        (h, send_events)
+    }
+
+    fn listen_events(mut self) {
+        for event in self.receive_events.iter() {
+            debug!("Current state: {}, received event: {:?}", self.state, event);
+            self.state = match &self.state {
+                &State::Start => match event {
+                    Event::NewSpec(spec) => self.start_initial_deploy(spec),
+                    _ => panic!("Invalid event")
+                },
+                &State::RunningStable{ref current} => match event {
+                    Event::NewSpec(spec) => match &spec.stop {
+                        // move stop dispatch inside
+                        &Stop::Before =>
+                            self.stop_current_and_start_deploy(current, spec),
+                        &Stop::AfterTimeout(_) =>
+                            self.start_new_deploy(current, spec)
+                    },
+                    _ => panic!("Invalid event")
+                },
+                &State::WaitingForFirstStable{ref candidate} => match event {
+                    Event::NewSpec(_) => unimplemented!(),
+                    Event::DeployFailed => State::Start,
+                    Event::GotStable =>
+                        State::RunningStable{current: candidate.to_owned()}
+                },
+                &State::WaitingForNewStable{ref last_stable, ref candidate} => match event {
+                    Event::NewSpec(_) => unimplemented!(),
+                    Event::DeployFailed =>
+                        self.restore_last_stable(last_stable),
+                    Event::GotStable =>
+                        State::RunningStable{current: candidate.to_owned()}
+                },
+                &State::RunningStableWaitingForNew{ref current, ref candidate} => match event {
+                    Event::NewSpec(_) => unimplemented!(),
+                    Event::DeployFailed =>
+                        State::RunningStable{current: current.to_owned()},
+                    Event::GotStable =>
+                        self.replace_old_stable(current, candidate)
+                }
+            };
+            debug!("Transitioned to state: {}", self.state);
         }
     }
 
+    fn start_initial_deploy(&self, init: Spec) -> State {
+        let state = State::WaitingForFirstStable{
+            candidate: Deploy::new(init)
+        };
+        // RUN DEPLOY
+        state
+    }
+
+    fn stop_current_and_start_deploy(&self, current: &Deploy, new: Spec) -> State {
+        // STOP CURRENT (TODO: actually stop just before new strt)
+        let state = State::WaitingForNewStable{
+            candidate: Deploy::new(new),
+            last_stable: current.to_owned()
+        };
+        // RUN DEPLOY
+        state
+    }
+
+    fn start_new_deploy(&self, current: &Deploy, new: Spec) -> State {
+        let state = State::RunningStableWaitingForNew{
+            current: current.to_owned(),
+            candidate: Deploy::new(new)
+        };
+        // RUN DEPLOY OF candaidate
+        state
+    }
+
+    fn restore_last_stable(&self, last_stable: &Deploy) -> State {
+        let state = State::WaitingForFirstStable{
+            candidate: last_stable.to_owned()
+        };
+        // RUN DEPLOY
+        state
+    }
+
+    fn replace_old_stable(&self, current: &Deploy, new: &Deploy) -> State {
+        // Schedule to stop old
+        debug!("schedule to stop old: {:?}", current);
+        let state = State::RunningStable{current: new.to_owned()};
+        state
+    }
 }

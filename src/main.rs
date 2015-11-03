@@ -27,6 +27,7 @@ mod consul;
 mod dispatcher;
 
 // traits
+use std::str::FromStr;
 // std
 use std::process::exit;
 // external
@@ -97,7 +98,7 @@ run docker container.");
     let (_, tx_events) = dispatcher.start();
     for json_spec in rx_json_specs.iter() {
         debug!("Received json spec: {}", json_spec);
-        match spec::parse_spec(&json_spec) {
+        match spec::Spec::from_str(&json_spec) {
             Ok(spec) => {
                 ignore_result!(tx_events.send(event::Event::NewSpec(spec)));
             },
