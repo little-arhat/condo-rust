@@ -8,6 +8,7 @@ use std::fmt;
 // internal
 use spec::*;
 use event::*;
+use docker::*;
 
 #[derive(Clone, Debug)]
 struct Deploy {
@@ -47,6 +48,7 @@ impl fmt::Display for State {
 
 pub struct Dispatcher {
     state: State,
+    docker: Docker,
     send_events: mpsc::Sender<Event>,
     receive_events: mpsc::Receiver<Event>
 }
@@ -54,10 +56,11 @@ pub struct Dispatcher {
 
 impl Dispatcher {
     #[inline]
-    pub fn new() -> Self {
+    pub fn new(docker: Docker) -> Self {
         let (send_events, receive_events) = mpsc::channel();
         Dispatcher{
             state: State::Start,
+            docker: docker,
             send_events: send_events,
             receive_events: receive_events
         }
@@ -113,10 +116,14 @@ impl Dispatcher {
     }
 
     fn start_initial_deploy(&self, init: Spec) -> State {
+        // RUN DEPLOY
+        match self.docker.pull_image(&init.image) {
+            Ok(s) => debug!("info: {}", s),
+            Err(e) => warn!("lol: {}", e)
+        };
         let state = State::WaitingForFirstStable{
             candidate: Deploy::new(init)
         };
-        // RUN DEPLOY
         state
     }
 

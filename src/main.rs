@@ -24,6 +24,7 @@ mod spec;
 mod event;
 mod human_uri;
 mod consul;
+mod docker;
 mod dispatcher;
 
 // traits
@@ -56,9 +57,13 @@ fn initialize_logging(level: log::LogLevelFilter) {
 
 fn main() {
     let mut consul_endpoint = "127.0.0.1:8500".to_string();
+    let mut docker_endpoint = "127.0.0.1:2736".to_string();
     let consul_env = "CONSUL_AGENT";
+    let docker_env = "DOCKER";
     let consul_help = format!("Address of consul agent to query; can \
 be set via {} env var; default: {}", consul_env, consul_endpoint);
+    let docker_help = format!("Address of docker server to query; can \
+be set via {} env var; default: {}", docker_env, docker_endpoint);
     let mut opt_consul_key:Option<String> = None;
     let mut log_level = log::LogLevelFilter::Debug;
     {
@@ -69,9 +74,13 @@ run docker container.");
                       argparse::Print(env!("CARGO_PKG_VERSION").to_string()),
                       "Show version");
         ap.refer(&mut consul_endpoint)
-            .envvar("CONSUL_AGENT")
+            .envvar(consul_env)
             .add_option(&["--consul"], argparse::Store,
                         &consul_help);
+        ap.refer(&mut docker_endpoint)
+            .envvar(docker_env)
+            .add_option(&["--docker"], argparse::Store,
+                        &docker_help);
         ap.refer(&mut opt_consul_key)
             .add_argument("consul_key", argparse::StoreOption,
                           "Consul key to watch")
@@ -93,8 +102,9 @@ run docker container.");
     let consul_key = opt_consul_key.unwrap();
     info!("Will watch for consul key: {}", consul_key);
     let consul = consul::Consul::new(&consul_endpoint);
+    let docker = docker::Docker::new(&docker_endpoint);
     let rx_json_specs = consul.watch_key(&consul_key);
-    let dispatcher = dispatcher::Dispatcher::new();
+    let dispatcher = dispatcher::Dispatcher::new(docker);
     let (_, tx_events) = dispatcher.start();
     for json_spec in rx_json_specs.iter() {
         debug!("Received json spec: {}", json_spec);
