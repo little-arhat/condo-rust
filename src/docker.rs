@@ -17,20 +17,20 @@ use spec;
 #[derive(Debug)]
 pub enum DockerError {
     HTTPError(String, String),
-    IOError(hyper::Error)
+    IOError(hyper::Error, String)
 }
 
 impl error::Error for DockerError {
     fn description(&self) -> &str {
         match self {
-            &DockerError::HTTPError(ref msg, _) => msg.as_str(),
-            &DockerError::IOError(ref e) => error_description(e),
+            &DockerError::HTTPError(ref msg, _) => msg,
+            &DockerError::IOError(_, ref s) => s,
         }
     }
 
     fn cause(&self) -> Option<&error::Error> {
         match self {
-            &DockerError::IOError(ref err) => Some(err as &error::Error),
+            &DockerError::IOError(ref err, _) => Some(err),
             _ => None,
         }
     }
@@ -39,18 +39,18 @@ impl error::Error for DockerError {
 impl fmt::Display for DockerError {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match self {
-            &DockerError::HTTPError(ref msg, ref body) => {
-                try!(msg.fmt(f));
-                body.fmt(f)
-            },
-            &DockerError::IOError(ref e) => e.description().fmt(f),
+            &DockerError::HTTPError(ref msg, _) =>
+                write!(f, "Docker HTTP Error: {}", msg),
+            &DockerError::IOError(_, ref s) =>
+                write!(f, "Docker IO error: {}", s),
         }
     }
 }
 
 impl From<hyper::Error> for DockerError {
     fn from(err: hyper::Error) -> DockerError {
-        DockerError::IOError(err)
+        let d = error_details(&err);
+        DockerError::IOError(err, d)
     }
 }
 
@@ -63,6 +63,7 @@ pub struct Docker {
 impl Docker {
     #[inline]
     pub fn new(raw_uri: &str) -> Docker {
+        // TODO: custom ssl certificates
         let endpoint = HumanURI::parse(raw_uri);
         Docker{
             client: hyper::Client::new(),
@@ -81,8 +82,8 @@ impl Docker {
         let mut body = String::new();
         response.read_to_string(&mut body).unwrap();
         if response.status != hyper::Ok {
-            return Err(DockerError::HTTPError(
-                format!("Error response, code: {}", response.status), body));
+            return Err(DockerError::HTTPError(format!("{}", response.status),
+                                              body))
         }
         return Ok(body)
     }

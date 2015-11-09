@@ -119,7 +119,7 @@ impl Dispatcher {
         // RUN DEPLOY
         match self.docker.pull_image(&init.image) {
             Ok(s) => debug!("info: {}", s),
-            Err(e) => warn!("lol: {}", e)
+            Err(e) => warn!("lol: {}, {:?}", e, e)
         };
         let state = State::WaitingForFirstStable{
             candidate: Deploy::new(init)

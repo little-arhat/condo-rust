@@ -20,22 +20,22 @@ use utils::*;
 #[derive(Debug)]
 pub enum ConsulError {
     HTTPError(String, String), // 404, 500, etc
-    IOError(hyper::Error), // not resolved, etc
+    IOError(hyper::Error, String), // not resolved, etc
     DataError(String) // wrong data inside json
 }
 
 impl error::Error for ConsulError {
     fn description(&self) -> &str {
         match self {
-            &ConsulError::HTTPError(ref msg, _) => msg.as_str(),
-            &ConsulError::IOError(ref e) => error_description(e),
-            &ConsulError::DataError(ref msg) => msg.as_str()
+            &ConsulError::HTTPError(ref msg, _) => msg,
+            &ConsulError::IOError(_, ref s) => s,
+            &ConsulError::DataError(ref msg) => msg
         }
     }
 
     fn cause(&self) -> Option<&error::Error> {
         match self {
-            &ConsulError::IOError(ref err) => Some(err as &error::Error),
+            &ConsulError::IOError(ref err, _) => Some(err),
             _ => None,
         }
     }
@@ -48,7 +48,8 @@ impl fmt::Display for ConsulError {
                 try!(msg.fmt(f));
                 body.fmt(f)
             },
-            &ConsulError::IOError(ref e) => e.description().fmt(f),
+            &ConsulError::IOError(_, ref s) =>
+                write!(f, "Consul IO error: {}", s),
             &ConsulError::DataError(ref msg) => msg.fmt(f)
         }
     }
@@ -56,7 +57,8 @@ impl fmt::Display for ConsulError {
 
 impl From<hyper::Error> for ConsulError {
     fn from(err: hyper::Error) -> ConsulError {
-        ConsulError::IOError(err)
+        let d = error_details(&err);
+        ConsulError::IOError(err, d)
     }
 }
 
@@ -96,8 +98,8 @@ impl Consul {
         let mut body = String::new();
         response.read_to_string(&mut body).unwrap();
         if response.status != hyper::Ok {
-            return Err(ConsulError::HTTPError(
-                format!("Error response, code: {}", response.status), body));
+            return Err(ConsulError::HTTPError(format!("{}", response.status),
+                                              body));
         }
         match response.headers.get::<XConsulIndex>() {
             Some(new_index) if *new_index.deref() == index =>

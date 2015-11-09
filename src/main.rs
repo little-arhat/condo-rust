@@ -57,7 +57,7 @@ fn initialize_logging(level: log::LogLevelFilter) {
 
 fn main() {
     let mut consul_endpoint = "127.0.0.1:8500".to_string();
-    let mut docker_endpoint = "127.0.0.1:2736".to_string();
+    let mut docker_endpoint = "127.0.0.1:2376".to_string();
     let consul_env = "CONSUL_AGENT";
     let docker_env = "DOCKER";
     let consul_help = format!("Address of consul agent to query; can \
