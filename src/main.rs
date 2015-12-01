@@ -12,11 +12,11 @@
 extern crate log4rs;
 extern crate collections;
 extern crate nix;
-// ext
 #[macro_use] extern crate hyper;
 extern crate argparse;
 extern crate serde;
 extern crate serde_json;
+extern crate url;
 
 // internal mods
 #[macro_use] mod utils;

@@ -1,6 +1,6 @@
 // ext
-extern crate hyper;
-extern crate url;
+use hyper;
+use url;
 // traits
 use std::clone::Clone;
 use std::fmt;
