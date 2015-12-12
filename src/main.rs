@@ -8,9 +8,10 @@
 #![plugin(serde_macros)]
 
 // packages
+extern crate collections;
+extern crate core;
 #[macro_use] extern crate log;
 extern crate log4rs;
-extern crate collections;
 extern crate nix;
 #[macro_use] extern crate hyper;
 extern crate argparse;
