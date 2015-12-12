@@ -118,7 +118,7 @@ impl Dispatcher {
     fn start_initial_deploy(&self, init: Spec) -> State {
         // RUN DEPLOY
         match self.docker.pull_image(&init.image) {
-            Ok(s) => debug!("info: {}", s),
+            Ok(_) => debug!("info: ok"),
             Err(e) => warn!("lol: {}, {:?}", e, e)
         };
         let state = State::WaitingForFirstStable{
