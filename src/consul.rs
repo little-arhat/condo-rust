@@ -21,7 +21,7 @@ use utils::*;
 pub enum ConsulError {
     HTTPError(String, String), // 404, 500, etc
     IOError(hyper::Error, String), // not resolved, etc
-    DataError(String) // wrong data inside json
+    ProtocolError(String) // wrong data inside spec / headers
 }
 
 impl error::Error for ConsulError {
@@ -29,7 +29,7 @@ impl error::Error for ConsulError {
         match self {
             &ConsulError::HTTPError(ref msg, _) => msg,
             &ConsulError::IOError(_, ref s) => s,
-            &ConsulError::DataError(ref msg) => msg
+            &ConsulError::ProtocolError(ref msg) => msg
         }
     }
 
@@ -50,7 +50,8 @@ impl fmt::Display for ConsulError {
             },
             &ConsulError::IOError(_, ref s) =>
                 write!(f, "Consul IO error: {}", s),
-            &ConsulError::DataError(ref msg) => msg.fmt(f)
+            &ConsulError::ProtocolError(ref s) =>
+                write!(f, "Consul protocol error: {}", s),
         }
     }
 }
@@ -107,7 +108,7 @@ impl Consul {
             Some(new_index) =>
                 Ok(ConsulKeyResponse::Key(body.to_owned(), *new_index.deref())),
             None =>
-                Err(ConsulError::DataError("No Index Received".to_owned()))
+                Err(ConsulError::ProtocolError("No Index Received".to_owned()))
         }
     }
 
