@@ -1,6 +1,5 @@
 #![deny(warnings)]
 #![feature(collections)]
-#![feature(convert)]
 
 #![feature(custom_derive, plugin)]
 #![feature(custom_attribute)]

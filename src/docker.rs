@@ -3,11 +3,11 @@
 use hyper;
 use hyper::{header};
 use serde_json;
+use serde_json::JSONStream;
 // traits
 use std::io::{Read};
 use std::fmt;
 use std::error;
-use std::error::Error;
 use std::convert::From;
 // internal
 use human_uri::HumanURI;
@@ -106,7 +106,7 @@ impl Docker {
             return Err(DockerError::HTTPError(format!("{}", response.status),
                                               body));
         }
-        let progress:JSONStream<serde_json::Value, _> = iter_to_stream(response.bytes());
+        let progress:JSONStream<serde_json::Value, _> = JSONStream::new(response.bytes());
         for msg in progress {
             let msg = try!(msg); // unwrap it
             info!("status: {:?}", msg);

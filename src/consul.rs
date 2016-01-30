@@ -6,7 +6,6 @@ use hyper::{header};
 use std::io::{Read};
 use std::fmt;
 use std::error;
-use std::error::Error;
 use std::convert::From;
 use std::ops::Deref;
 // std
